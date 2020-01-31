@@ -17,9 +17,7 @@ defmodule GqlOrdersWeb.Schema do
     field(:description, non_null(:string))
     field(:total, non_null(:decimal))
     field(:balance_due, non_null(:decimal))
-    field(:payments_applied, non_null(list_of(:payment))) do
-      resolve(&get_payments_by_order/3)
-    end
+    field(:payments_applied, non_null(list_of(:payment)))
   end
 
   @desc "A payment"
@@ -127,7 +125,8 @@ defmodule GqlOrdersWeb.Schema do
   def repo_get_order(id) do
     q =
       from(o in Order,
-        where: o.id == ^id
+        where: o.id == ^id,
+        preload: :payments_applied
       )
 
     Repo.one(q)
@@ -136,7 +135,7 @@ defmodule GqlOrdersWeb.Schema do
   def repo_get_all_orders() do
     case Repo.all(Order) do
       nil -> []
-      orders -> orders
+      orders -> orders |> Repo.preload(:payments_applied)
     end
   end
 end
