@@ -17,6 +17,7 @@
                         'Elixir.GqlOrdersWeb.Router',
                         'Elixir.GqlOrdersWeb.Router.Helpers',
                         'Elixir.GqlOrdersWeb.Schema',
+                        'Elixir.GqlOrdersWeb.Schema.Compiled',
                         'Elixir.GqlOrdersWeb.UserSocket']},
               {registered,[]},
               {vsn,"0.1.0"},

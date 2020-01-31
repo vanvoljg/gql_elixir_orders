@@ -17,7 +17,6 @@ defmodule GqlOrdersWeb.Schema do
     field(:description, non_null(:string))
     field(:total, non_null(:decimal))
     field(:balance_due, non_null(:decimal))
-    # field(:payments_applied, non_null(list_of(:payment)))
     field(:payments_applied, non_null(list_of(:payment))) do
       resolve(&get_payments_by_order/3)
     end
@@ -72,6 +71,15 @@ defmodule GqlOrdersWeb.Schema do
       arg(:note, :string)
       resolve(&ni/3)
     end
+
+    @desc "Create an order and apply a payment in one transaction"
+    field :create_order_payment, non_null(:order) do
+      arg(:total, non_null(:decimal))
+      arg(:description, non_null(:string))
+      arg(:payment_amount, non_null(:decimal))
+      arg(:payment_note, non_null(:string))
+      resolve(&ni/3)
+    end
   end
 
   def ni(parent, args, _resolution) do
@@ -119,8 +127,7 @@ defmodule GqlOrdersWeb.Schema do
   def repo_get_order(id) do
     q =
       from(o in Order,
-        where: o.id == ^id,
-        # preload: :payments_applied
+        where: o.id == ^id
       )
 
     Repo.one(q)
@@ -130,7 +137,6 @@ defmodule GqlOrdersWeb.Schema do
     case Repo.all(Order) do
       nil -> []
       orders -> orders
-      # orders -> orders |> Repo.preload(:payments_applied)
     end
   end
 end

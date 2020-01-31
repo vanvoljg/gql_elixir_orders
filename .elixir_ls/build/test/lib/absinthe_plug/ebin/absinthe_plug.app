@@ -20,4 +20,4 @@
                         'Elixir.Mix.Tasks.Absinthe.Plug.Graphiql.Assets.Download',
                         'Elixir.Mix.Tasks.Absinthe.Plug.Graphiql.Assets.Remove']},
               {registered,[]},
-              {vsn,"1.4.7"}]}.
+              {vsn,"1.5.0-rc.1"}]}.
