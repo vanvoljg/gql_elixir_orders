@@ -5,11 +5,11 @@ defmodule GqlOrdersWeb.Schema do
 
   import Ecto.Query
 
-  alias GqlOrders.Order
-  alias GqlOrders.Payment
-  alias GqlOrders.Repo
+  alias GqlOrders.{Order, Payment, Repo}
 
   import_types(Absinthe.Type.Custom)
+
+  # Types ---------------------------------------------------------------------
 
   @desc "An order"
   object :order do
@@ -17,7 +17,10 @@ defmodule GqlOrdersWeb.Schema do
     field(:description, non_null(:string))
     field(:total, non_null(:decimal))
     field(:balance_due, non_null(:decimal))
-    field(:payments_applied, non_null(list_of(:payment)))
+
+    field :payments_applied, non_null(list_of(:payment)) do
+      resolve(&get_payments_by_order/3)
+    end
   end
 
   @desc "A payment"
@@ -27,6 +30,8 @@ defmodule GqlOrdersWeb.Schema do
     field(:applied_at, non_null(:datetime))
     field(:order_id, non_null(:id))
   end
+
+  # Queries -------------------------------------------------------------------
 
   query do
     @desc "Get a list of all orders"
@@ -47,19 +52,20 @@ defmodule GqlOrdersWeb.Schema do
     end
 
     @desc "Get a list of payments for an order, by order ID"
-    field :payment_by_order, non_null(list_of(:payment)) do
+    field :payments_by_order, non_null(list_of(:payment)) do
       arg(:order_id, non_null(:id))
       resolve(&get_payments_by_order/3)
     end
   end
+
+  # Mutations -----------------------------------------------------------------
 
   mutation do
     @desc "Create an order"
     field :create_order, non_null(:order) do
       arg(:total, non_null(:decimal))
       arg(:description, non_null(:string))
-      arg(:balance_due, :decimal)
-      resolve(&ni/3)
+      resolve(&create_order/3)
     end
 
     @desc "Apply a payment to an order"
@@ -74,17 +80,29 @@ defmodule GqlOrdersWeb.Schema do
     field :create_order_payment, non_null(:order) do
       arg(:total, non_null(:decimal))
       arg(:description, non_null(:string))
-      arg(:payment_amount, non_null(:decimal))
-      arg(:payment_note, non_null(:string))
+      arg(:amount, non_null(:decimal))
+      arg(:note, :string)
       resolve(&ni/3)
     end
   end
+
+  # Resolvers -----------------------------------------------------------------
 
   def ni(parent, args, _resolution) do
     IO.puts("ni/3")
     IO.puts("Parent: #{inspect(parent)}")
     IO.puts("Args: #{inspect(args)}")
     {:error, "Not implemented"}
+  end
+
+  def create_order(_parent, args, _resolution) do
+    case repo_create_order(args) do
+      {:error, _changeset} ->
+        {:error, "There was an error creating the order"}
+
+      {:ok, order} ->
+        {:ok, order}
+    end
   end
 
   def get_all_orders(_parent, _args, _resolution) do
@@ -113,6 +131,14 @@ defmodule GqlOrdersWeb.Schema do
     {:ok, repo_get_payments_by_order(order_id)}
   end
 
+  # Repo access methods -------------------------------------------------------
+
+  def repo_create_order(args) do
+    %Order{}
+    |> Order.changeset(args)
+    |> Repo.insert(returning: true)
+  end
+
   def repo_get_payment(id) do
     Repo.get(Payment, id)
   end
@@ -125,8 +151,7 @@ defmodule GqlOrdersWeb.Schema do
   def repo_get_order(id) do
     q =
       from(o in Order,
-        where: o.id == ^id,
-        preload: :payments_applied
+        where: o.id == ^id
       )
 
     Repo.one(q)
@@ -135,7 +160,7 @@ defmodule GqlOrdersWeb.Schema do
   def repo_get_all_orders() do
     case Repo.all(Order) do
       nil -> []
-      orders -> orders |> Repo.preload(:payments_applied)
+      orders -> orders
     end
   end
 end

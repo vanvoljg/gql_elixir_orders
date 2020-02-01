@@ -1,4 +1,6 @@
 defmodule GqlOrders.Order do
+  @moduledoc false
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -15,7 +17,18 @@ defmodule GqlOrders.Order do
   @doc false
   def changeset(order, attrs) do
     order
-    |> cast(attrs, [:description, :total, :balance_due])
+    |> cast(attrs, [:description, :total])
+    |> update_balance_due(attrs)
     |> validate_required([:description, :total, :balance_due])
+  end
+
+  defp update_balance_due(changeset, attrs)
+       when is_map_key(attrs, :balance_due) do
+    cast(changeset, attrs, [:balance_due])
+  end
+
+  defp update_balance_due(changeset, _attrs) do
+    total = fetch_change!(changeset, :total)
+    put_change(changeset, :balance_due, total)
   end
 end
