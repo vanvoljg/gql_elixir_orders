@@ -3,8 +3,9 @@ defmodule GqlOrdersWeb.Schema do
 
   use Absinthe.Schema
 
-  import Ecto.Query
+  import Ecto.{Changeset, Query}
 
+  alias Decimal
   alias GqlOrders.{Order, Payment, Repo}
 
   import_types(Absinthe.Type.Custom)
@@ -29,6 +30,7 @@ defmodule GqlOrdersWeb.Schema do
     field(:amount, non_null(:decimal))
     field(:applied_at, non_null(:datetime))
     field(:order_id, non_null(:id))
+    field(:note, :string)
   end
 
   # Queries -------------------------------------------------------------------
@@ -73,36 +75,30 @@ defmodule GqlOrdersWeb.Schema do
       arg(:amount, non_null(:decimal))
       arg(:order_id, non_null(:id))
       arg(:note, :string)
-      resolve(&ni/3)
+      resolve(&apply_payment/3)
     end
 
     @desc "Create an order and apply a payment in one transaction"
-    field :create_order_payment, non_null(:order) do
+    field :order_complete, non_null(:order) do
       arg(:total, non_null(:decimal))
       arg(:description, non_null(:string))
-      arg(:amount, non_null(:decimal))
       arg(:note, :string)
-      resolve(&ni/3)
+      resolve(&order_complete/3)
     end
   end
 
   # Resolvers -----------------------------------------------------------------
 
-  def ni(parent, args, _resolution) do
-    IO.puts("ni/3")
-    IO.puts("Parent: #{inspect(parent)}")
-    IO.puts("Args: #{inspect(args)}")
-    {:error, "Not implemented"}
+  def order_complete(_parent, args, _resolution) do
+    repo_order_complete(args)
+  end
+
+  def apply_payment(_parent, args, _resolution) do
+    repo_apply_payment(args)
   end
 
   def create_order(_parent, args, _resolution) do
-    case repo_create_order(args) do
-      {:error, _changeset} ->
-        {:error, "There was an error creating the order"}
-
-      {:ok, order} ->
-        {:ok, order}
-    end
+    repo_create_order(args)
   end
 
   def get_all_orders(_parent, _args, _resolution) do
@@ -123,15 +119,85 @@ defmodule GqlOrdersWeb.Schema do
     end
   end
 
-  def get_payments_by_order(%Order{id: order_id}, _args, _resolution) do
-    {:ok, repo_get_payments_by_order(order_id)}
+  def get_payments_by_order(%Order{id: o_id}, _args, _resolution) do
+    {:ok, repo_get_payments_by_order(o_id)}
   end
 
-  def get_payments_by_order(_parent, %{order_id: order_id}, _resolution) do
-    {:ok, repo_get_payments_by_order(order_id)}
+  def get_payments_by_order(_parent, %{order_id: o_id}, _resolution) do
+    {:ok, repo_get_payments_by_order(o_id)}
   end
 
   # Repo access methods -------------------------------------------------------
+
+  def repo_order_complete(args) do
+    {order, payment} = build_complete_order(args)
+
+    order = Order.changeset(%Order{}, order)
+    payment = Payment.order_complete(%Payment{}, payment)
+    order_complete_transaction(order, payment)
+  end
+
+  def order_complete_transaction(order, payment) do
+    if order.valid? === true do
+      Repo.transaction(fn ->
+        order = Repo.insert!(order, returning: true)
+
+        payment
+        |> change(order_id: order.id, applied_at: order.updated_at)
+        |> Repo.insert!(returning: true)
+
+        order
+      end)
+    else
+      {:error, priv_errors_to_list(order.errors)}
+    end
+  end
+
+  def priv_errors_to_list(errors) do
+    for {field, {msg, _args}} <- errors, do: "#{field} #{msg}"
+  end
+
+  def build_complete_order(args) do
+    order = %{
+      total: args.total,
+      description: args.description,
+      balance_due: 0
+    }
+
+    payment = %{
+      amount: order.total,
+      note: args[:note] || "Full total payment"
+    }
+
+    {order, payment}
+  end
+
+  def repo_apply_payment(%{order_id: o_id} = args) do
+    with %Order{} = order <- Repo.get(Order, o_id),
+         %Ecto.Changeset{} = payment <- repo_create_payment(order.balance_due, args) do
+      order = priv_update_balance_due(order, payment)
+      priv_payment_transaction(order, payment)
+    else
+      nil -> {:error, "#{o_id} is not a valid order id"}
+      :payment_too_large = error -> {:error, error}
+    end
+  end
+
+  def priv_payment_transaction(order, payment) do
+    Repo.transaction(fn ->
+      %{updated_at: applied_at} = Repo.update!(order, returning: true)
+
+      payment
+      |> put_change(:applied_at, applied_at)
+      |> Repo.insert!(returning: true)
+    end)
+  end
+
+  def priv_update_balance_due(order, payment) do
+    amount = fetch_change!(payment, :amount)
+    new_balance_due = Decimal.sub(order.balance_due, amount)
+    change(order, balance_due: new_balance_due)
+  end
 
   def repo_create_order(args) do
     %Order{}
@@ -139,28 +205,32 @@ defmodule GqlOrdersWeb.Schema do
     |> Repo.insert(returning: true)
   end
 
-  def repo_get_payment(id) do
-    Repo.get(Payment, id)
+  def repo_create_payment(balance_due, %{amount: amount} = args) do
+    if Decimal.gt?(amount, balance_due) do
+      :payment_too_large
+    else
+      Payment.changeset(%Payment{}, args)
+    end
   end
 
-  def repo_get_payments_by_order(id) do
-    q = from(p in Payment, where: p.order_id == ^id)
+  def repo_get_all_orders do
+    q =
+      from o in Order,
+        order_by: o.inserted_at
+
     Repo.all(q)
   end
 
-  def repo_get_order(id) do
+  def repo_get_order(id), do: Repo.get(Order, id)
+
+  def repo_get_payment(id), do: Repo.get(Payment, id)
+
+  def repo_get_payments_by_order(o_id) do
     q =
-      from(o in Order,
-        where: o.id == ^id
-      )
+      from p in Payment,
+        where: p.order_id == ^o_id,
+        order_by: p.applied_at
 
-    Repo.one(q)
-  end
-
-  def repo_get_all_orders() do
-    case Repo.all(Order) do
-      nil -> []
-      orders -> orders
-    end
+    Repo.all(q)
   end
 end

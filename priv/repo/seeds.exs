@@ -28,12 +28,12 @@ Repo.insert!(
     payments_applied: [
       %Payment{
         amount: 50.00,
-        applied_at: DateTime.truncate(DateTime.utc_now(), :second),
+        applied_at: DateTime.utc_now(),
         note: "Applied"
       },
       %Payment{
         amount: 50.00,
-        applied_at: DateTime.truncate(DateTime.utc_now(), :second),
+        applied_at: DateTime.utc_now(),
         note: ""
       }
     ]
@@ -48,7 +48,7 @@ Repo.insert!(
     payments_applied: [
       %Payment{
         amount: 50.00,
-        applied_at: DateTime.truncate(DateTime.utc_now(), :second),
+        applied_at: DateTime.utc_now(),
         note: "Order complete!"
       }
     ]

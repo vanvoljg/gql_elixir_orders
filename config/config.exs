@@ -10,7 +10,8 @@ use Mix.Config
 config :gql_orders,
   ecto_repos: [GqlOrders.Repo]
 
-config :gql_orders, GqlOrders.Repo, migration_timestamps: [type: :utc_datetime]
+config :gql_orders, GqlOrders.Repo,
+  migration_timestamps: [type: :utc_datetime_usec]
 
 # Configures the endpoint
 config :gql_orders, GqlOrdersWeb.Endpoint,

@@ -3,10 +3,10 @@ defmodule GqlOrders.Repo.Migrations.CreatePayments do
 
   def change do
     create table(:payments) do
-      add :amount, :decimal
-      add :applied_at, :utc_datetime
-      add :note, :text
-      add :order_id, references(:orders, on_delete: :nothing)
+      add :amount, :decimal, null: false
+      add :applied_at, :utc_datetime_usec
+      add :note, :text, default: ""
+      add :order_id, references(:orders, on_delete: :nothing), null: false
 
       timestamps()
     end

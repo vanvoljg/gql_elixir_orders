@@ -11,7 +11,7 @@ defmodule GqlOrders.Order do
 
     has_many :payments_applied, GqlOrders.Payment
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false
@@ -20,6 +20,7 @@ defmodule GqlOrders.Order do
     |> cast(attrs, [:description, :total])
     |> update_balance_due(attrs)
     |> validate_required([:description, :total, :balance_due])
+    |> validate_positive(:total)
   end
 
   defp update_balance_due(changeset, attrs)
@@ -28,7 +29,16 @@ defmodule GqlOrders.Order do
   end
 
   defp update_balance_due(changeset, _attrs) do
-    total = fetch_change!(changeset, :total)
-    put_change(changeset, :balance_due, total)
+    balance_due = fetch_change!(changeset, :total)
+    put_change(changeset, :balance_due, balance_due)
+  end
+
+  defp validate_positive(changeset, field)
+       when not is_nil(field) do
+    validate_change(changeset, field, fn _field, value ->
+      if Decimal.positive?(value),
+        do: [],
+        else: [{field, "must be positive"}]
+    end)
   end
 end

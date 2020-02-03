@@ -3,9 +3,9 @@ defmodule GqlOrders.Repo.Migrations.CreateOrders do
 
   def change do
     create table(:orders) do
-      add :description, :text
-      add :total, :decimal
-      add :balance_due, :decimal
+      add :description, :text, null: false
+      add :total, :decimal, null: false
+      add :balance_due, :decimal, null: false
 
       timestamps()
     end
