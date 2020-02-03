@@ -14,7 +14,9 @@ defmodule GqlOrders.Order do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @doc false
+  @doc """
+  The default changeset. Validates all required fields. Returns an order changeset.
+  """
   def changeset(order, attrs) do
     order
     |> cast(attrs, [:description, :total])

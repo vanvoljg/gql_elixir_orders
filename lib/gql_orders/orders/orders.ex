@@ -3,102 +3,110 @@ defmodule GqlOrders.Orders do
   The Orders context.
   """
 
+  import Ecto.Changeset, only: [change: 2]
   import Ecto.Query, warn: false
-  alias GqlOrders.Repo
 
-  alias GqlOrders.Order
+  alias GqlOrders.{Order, Payment, Repo}
 
   @doc """
-  Returns the list of orders.
-
-  ## Examples
-
-      iex> list_orders()
-      [%Order{}, ...]
-
+  Takes a set of order arguments and returns a tuple:
+  `{order, payment}`
   """
-  def list_orders do
-    Repo.all(Order)
+  def build_complete_order(args) do
+    order = %{
+      total: args.total,
+      description: args.description,
+      balance_due: 0
+    }
+
+    payment = %{
+      amount: order.total,
+      note: args[:note] || "Full total payment"
+    }
+
+    {order, payment}
   end
 
   @doc """
-  Gets a single order.
+  Creates an order.
 
-  Raises `Ecto.NoResultsError` if the Order does not exist.
-
-  ## Examples
-
-      iex> get_order!(123)
-      %Order{}
-
-      iex> get_order!(456)
-      ** (Ecto.NoResultsError)
-
+  Returns a tuple:
+  `{:ok, order} | {:error, changeset}`
   """
-  def get_order!(id), do: Repo.get!(Order, id)
-
-  @doc """
-  Creates a order.
-
-  ## Examples
-
-      iex> create_order(%{field: value})
-      {:ok, %Order{}}
-
-      iex> create_order(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_order(attrs \\ %{}) do
+  def create_order(args) do
     %Order{}
-    |> Order.changeset(attrs)
-    |> Repo.insert()
+    |> Order.changeset(args)
+    |> Repo.insert(returning: true)
   end
 
   @doc """
-  Updates a order.
-
-  ## Examples
-
-      iex> update_order(order, %{field: new_value})
-      {:ok, %Order{}}
-
-      iex> update_order(order, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
+  Takes a list of errors from a changeset and returns a list with errors parsed to strings.
   """
-  def update_order(%Order{} = order, attrs) do
-    order
-    |> Order.changeset(attrs)
-    |> Repo.update()
+  def errors_to_list(errors) do
+    Enum.map(errors, &parse_error/1)
   end
 
   @doc """
-  Deletes a order.
-
-  ## Examples
-
-      iex> delete_order(order)
-      {:ok, %Order{}}
-
-      iex> delete_order(order)
-      {:error, %Ecto.Changeset{}}
-
+  Gets an order by its id. Returns an order or `nil`.
   """
-  def delete_order(%Order{} = order) do
-    Repo.delete(order)
+  def get_order(id), do: Repo.get(Order, id)
+
+  @doc """
+  Gets a list of all orders. Returns a list of orders or an empty list (if no orders found).
+  """
+  def get_all_orders do
+    q =
+      from o in Order,
+        order_by: o.inserted_at
+
+    Repo.all(q)
   end
 
   @doc """
-  Returns an `%Ecto.Changeset{}` for tracking order changes.
+  Creates an order and payment in a single operation. The payment amount will be automatically
+  set to the order total.
 
-  ## Examples
-
-      iex> change_order(order)
-      %Ecto.Changeset{source: %Order{}}
-
+  Returns a tuple:
+  `{:ok, order} | {:error, [errors]}`
   """
-  def change_order(%Order{} = order) do
-    Order.changeset(order, %{})
+  def order_complete(args) do
+    {order, payment} = build_complete_order(args)
+
+    order = Order.changeset(%Order{}, order)
+    payment = Payment.order_complete(%Payment{}, payment)
+    order_complete_transaction(order, payment)
+  end
+
+  @doc """
+  Takes an order changeset and a payment changeset and transactionally inserts both into the
+  database.
+
+  Returns a tuple:
+  `{:ok, order} | {:error, [errors]}`
+  """
+  def order_complete_transaction(order, payment) do
+    if order.valid? === true do
+      Repo.transaction(fn ->
+        order = Repo.insert!(order, returning: true)
+
+        payment
+        |> change(order_id: order.id, applied_at: order.updated_at)
+        |> Repo.insert!(returning: true)
+
+        order
+      end)
+    else
+      {:error, errors_to_list(order.errors)}
+    end
+  end
+
+  # Helpers -------------------------------------------------------------------
+
+  defp parse_error({field, {msg, args}}) when is_list(args) do
+    "#{field} #{msg}, arguments #{List.to_string(args)}"
+  end
+
+  defp parse_error({field, {msg, _}}) do
+    "#{field} #{msg}"
   end
 end

@@ -3,102 +3,79 @@ defmodule GqlOrders.Payments do
   The Payments context.
   """
 
+  import Ecto.Changeset, only: [change: 2, fetch_change!: 2, put_change: 3]
   import Ecto.Query, warn: false
-  alias GqlOrders.Repo
 
-  alias GqlOrders.Payment
+  alias GqlOrders.{Order, Payment, Payments, Repo}
 
   @doc """
-  Returns the list of payments.
+  Creates a new payment linked to the provided order id and updates the order with a reduced
+  balance due.
 
-  ## Examples
-
-      iex> list_payments()
-      [%Payment{}, ...]
-
+  Returns a tuple:
+  `{:ok, payment} | {:error, error}`
   """
-  def list_payments do
-    Repo.all(Payment)
+  def apply_payment(%{order_id: o_id} = args) do
+    with %Order{} = order <- Repo.get(Order, o_id),
+         {:ok, payment} <- Payments.create_payment(order.balance_due, args) do
+      order = update_balance_due(order, payment)
+      payment_transaction(order, payment)
+    else
+      nil -> {:error, "#{o_id} is not a valid order id"}
+      {:error, :payment_too_large} = error -> error
+    end
   end
 
   @doc """
-  Gets a single payment.
-
-  Raises `Ecto.NoResultsError` if the Payment does not exist.
-
-  ## Examples
-
-      iex> get_payment!(123)
-      %Payment{}
-
-      iex> get_payment!(456)
-      ** (Ecto.NoResultsError)
-
+  Takes an order changeset and a payment changeset 
   """
-  def get_payment!(id), do: Repo.get!(Payment, id)
+  def payment_transaction(order, payment) do
+    Repo.transaction(fn ->
+      %{updated_at: applied_at} = Repo.update!(order, returning: true)
 
-  @doc """
-  Creates a payment.
-
-  ## Examples
-
-      iex> create_payment(%{field: value})
-      {:ok, %Payment{}}
-
-      iex> create_payment(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def create_payment(attrs \\ %{}) do
-    %Payment{}
-    |> Payment.changeset(attrs)
-    |> Repo.insert()
+      payment
+      |> put_change(:applied_at, applied_at)
+      |> Repo.insert!()
+    end)
   end
 
   @doc """
-  Updates a payment.
-
-  ## Examples
-
-      iex> update_payment(payment, %{field: new_value})
-      {:ok, %Payment{}}
-
-      iex> update_payment(payment, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
+  Takes an order and a payment 
   """
-  def update_payment(%Payment{} = payment, attrs) do
-    payment
-    |> Payment.changeset(attrs)
-    |> Repo.update()
+  def update_balance_due(order, payment) do
+    amount = fetch_change!(payment, :amount)
+    new_balance_due = Decimal.sub(order.balance_due, amount)
+    change(order, balance_due: new_balance_due)
   end
 
   @doc """
-  Deletes a payment.
+  Takes a set of payment arguments and creates a payment changeset.
 
-  ## Examples
-
-      iex> delete_payment(payment)
-      {:ok, %Payment{}}
-
-      iex> delete_payment(payment)
-      {:error, %Ecto.Changeset{}}
-
+  Returns:
+  `{:ok, payment_changeset} | {:error, :payment_too_large}`
   """
-  def delete_payment(%Payment{} = payment) do
-    Repo.delete(payment)
+  def create_payment(balance_due, %{amount: amount} = args) do
+    if Decimal.gt?(amount, balance_due) do
+      {:error, :payment_too_large}
+    else
+      {:ok, Payment.changeset(%Payment{}, args)}
+    end
   end
 
   @doc """
-  Returns an `%Ecto.Changeset{}` for tracking payment changes.
-
-  ## Examples
-
-      iex> change_payment(payment)
-      %Ecto.Changeset{source: %Payment{}}
-
+  Takes an id and returns a payment or `nil`.
   """
-  def change_payment(%Payment{} = payment) do
-    Payment.changeset(payment, %{})
+  def get_payment(id), do: Repo.get(Payment, id)
+
+  @doc """
+  Takes an order id and returns a list of payments for that order or an empty list.
+  """
+  def get_payments_by_order(o_id) do
+    q =
+      from p in Payment,
+        where: p.order_id == ^o_id,
+        order_by: p.applied_at
+
+    Repo.all(q)
   end
 end
