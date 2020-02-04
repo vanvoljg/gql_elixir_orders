@@ -1,11 +1,9 @@
 defmodule GqlOrdersWeb.Schema.Types do
   @moduledoc false
 
-  use Absinthe.Schema
+  use Absinthe.Schema.Notation
 
   alias GqlOrdersWeb.Resolvers
-
-  import_types Absinthe.Type.Custom
 
   @desc "An order"
   object :order do
