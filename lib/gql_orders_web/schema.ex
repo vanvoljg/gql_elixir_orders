@@ -5,8 +5,8 @@ defmodule GqlOrdersWeb.Schema do
 
   alias GqlOrdersWeb.Resolvers
 
-  import_types Absinthe.Type.Custom
-  import_types GqlOrdersWeb.Schema.Types
+  import_types(Absinthe.Type.Custom)
+  import_types(GqlOrdersWeb.Schema.Types)
 
   # Queries -------------------------------------------------------------------
 

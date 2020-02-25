@@ -25,5 +25,4 @@ defmodule GqlOrdersWeb.Schema.Types do
     field(:order_id, non_null(:id))
     field(:note, :string)
   end
-
 end

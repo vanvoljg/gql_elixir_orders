@@ -2,7 +2,7 @@ defmodule GqlOrdersWeb.Resolvers do
   @moduledoc false
 
   alias GqlOrders.{Order, Orders, Payments}
-  
+
   # Resolvers -----------------------------------------------------------------
 
   @doc """
